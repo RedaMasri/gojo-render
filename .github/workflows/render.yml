@@ -1,0 +1,42 @@
+name: render
+run-name: ${{ inputs.job }}
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        required: true
+      cmd:
+        required: true
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: kit
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg python3-numpy python3-pil >/dev/null
+          ffmpeg -version | head -1; python3 -c "import numpy, PIL; print(numpy.__version__, PIL.__version__)"; nproc
+      - name: inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo mkdir -p /work && sudo chown "$USER" /work && cd /work
+          gh release download "${{ inputs.job }}" -R "${{ github.repository }}" -p in.tgz
+          tar xzf in.tgz && rm in.tgz && mkdir -p out && ls -la
+      - name: render
+        working-directory: /work
+        env:
+          CMD_B64: ${{ inputs.cmd }}
+        run: |
+          export BURST_OUT=/work/out BURST_THREADS=$(nproc)
+          echo "$CMD_B64" | base64 -d > /tmp/cmd.sh
+          bash -eo pipefail /tmp/cmd.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: out
+          path: /work/out
+          retention-days: 1
+          compression-level: 0
